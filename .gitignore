@@ -9,4 +9,11 @@ build/
 ai_system_stats.json
 venv/
 .venv/
+services/
+shared/
+ARCHITECTURE.md
+binary_search.py
+fibonacci.py
+docker-compose.yml
+run_services.ps1
 ai_system_pids.json
