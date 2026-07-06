@@ -14,6 +14,11 @@ def should_upgrade(response: TaskResponse) -> bool:
     if not result:
         return True
 
+    lowered = result.lower()
+    for kw in COST_POLICY.get("upgrade_on_keywords", []):
+        if kw.lower() in lowered:
+            return COST_POLICY["upgrade_on_error"]
+
     if len(result) < COST_POLICY["min_response_length"] and not _contains_chinese(result):
         return COST_POLICY["upgrade_on_short_response"]
 

@@ -48,11 +48,13 @@ COST_POLICY = {
 
 
 # ===================== 执行器 =====================
+# auto_approve=True 会让 OpenCode 以 --auto 无确认执行代码/命令，存在安全风险。
+# 可通过环境变量 OPENCODE_AUTO_APPROVE=0 关闭。
 EXECUTOR_CONFIG = {
-    "opencode_cmd": "opencode",
-    "timeout": 300,
+    "opencode_cmd": os.environ.get("OPENCODE_CMD", "opencode"),
+    "timeout": int(os.environ.get("OPENCODE_TIMEOUT", "300")),
     "max_retries": 2,
-    "auto_approve": True,
+    "auto_approve": os.environ.get("OPENCODE_AUTO_APPROVE", "1") not in ("0", "false", "False", ""),
 }
 
 
