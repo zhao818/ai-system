@@ -2,14 +2,15 @@ from router import route, get_models_for_tier
 from policy import should_upgrade, calculate_cost_ratio
 from executor import run_opencode
 from models import TaskRequest, TaskResponse, ModelTier
-from config import COST_POLICY
-import json, time, concurrent.futures
+from config import STATS_FILE, HISTORY_FILE, MAX_HISTORY
+import json, os, time, concurrent.futures
 
 
 class AISystem:
     def __init__(self):
         self.stats = {"cheap": 0, "mid": 0, "premium": 0}
         self.history = []
+        self._load_state()
 
     def run(self, task: str, preferred_tier: str = None, context: str = None) -> TaskResponse:
         print(f"\n{'='*60}")
@@ -43,12 +44,15 @@ class AISystem:
 
     def _run_concurrent(self, models: list, request: TaskRequest, decision) -> TaskResponse:
         print(f"并发尝试: {', '.join(models)}")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as executor:
+        tried = set()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(models))
+        try:
             futures = {executor.submit(run_opencode, m, request.task): m for m in models}
             for future in concurrent.futures.as_completed(futures):
                 model = futures[future]
+                tried.add(model)
                 try:
-                    result = future.result(timeout=60)
+                    result = future.result()
                     response = TaskResponse(
                         success=True, model_used=model,
                         tier_used=decision.tier, result=result
@@ -61,9 +65,15 @@ class AISystem:
                         return response
                 except Exception:
                     continue
+        finally:
+            # 立即返回，不等待其余子进程；已完成结果不达标才走兜底
+            executor.shutdown(wait=False, cancel_futures=True)
 
-        # 顺序兜底
-        return self._run_sequential(models, request, decision)
+        # 顺序兜底：只重试尚未跑过（被取消/未完成）的模型，避免重复劳动
+        remaining = [m for m in models if m not in tried]
+        if not remaining:
+            return TaskResponse(success=False, model_used="", tier_used=decision.tier, result="")
+        return self._run_sequential(remaining, request, decision)
 
     def _run_sequential(self, models: list, request: TaskRequest, decision, fallback_count: int = 0) -> TaskResponse:
         for i, model in enumerate(models):
@@ -100,11 +110,37 @@ class AISystem:
         return TaskResponse(success=False, model_used="none", tier_used=current_tier, result="", error="所有模型均失败")
 
     def _record_history(self, request, response):
-        self.history.append({
+        entry = {
             "timestamp": time.time(), "task": request.task[:100],
             "model": response.model_used, "tier": response.tier_used.value,
             "success": response.success, "fallback_count": response.fallback_count
-        })
+        }
+        self.history.append(entry)
+        if len(self.history) > MAX_HISTORY:
+            self.history = self.history[-MAX_HISTORY:]
+        self._save_state(entry)
+
+    def _load_state(self):
+        try:
+            if os.path.exists(STATS_FILE):
+                with open(STATS_FILE, encoding="utf-8") as f:
+                    saved = json.load(f)
+                for k in self.stats:
+                    self.stats[k] = int(saved.get(k, 0))
+            if os.path.exists(HISTORY_FILE):
+                with open(HISTORY_FILE, encoding="utf-8") as f:
+                    self.history = [json.loads(line) for line in f if line.strip()][-MAX_HISTORY:]
+        except (OSError, ValueError) as e:
+            print(f"⚠️ 无法加载历史状态: {e}")
+
+    def _save_state(self, entry: dict):
+        try:
+            with open(STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.stats, f, ensure_ascii=False)
+            with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as e:
+            print(f"⚠️ 无法保存状态: {e}")
 
     def _print_stats(self):
         ratio = calculate_cost_ratio(self.stats)

@@ -24,7 +24,7 @@ def route(task_request: TaskRequest) -> RouterDecision:
             confidence=1.0
         )
 
-    prompt = ROUTER_PROMPT.format(task=task_request.task)
+    prompt = ROUTER_PROMPT.replace("{task}", task_request.task)
 
     try:
         raw = call_llm(ROUTER_MODEL, prompt, max_tokens=1000)

@@ -10,12 +10,12 @@
 
 | 特性 | 说明 |
 |------|------|
-| **智能路由** | GPT-4o-mini 自动判断任务复杂度，分配 cheap/mid/premium 三层模型 |
-| **自动降级** | 模型失败/结果质量不达标 → 自动尝试下一个模型 → 再升级层级 |
-| **统一接口** | LiteLLM 统一调用 OpenAI/Anthropic/Google/DeepSeek/Qwen 等 |
+| **智能路由** | MIMO 模型自动判断任务复杂度，分配 cheap/mid/premium 三层模型 |
+| **自动降级** | 模型失败/结果质量不达标/命中风险关键词 → 自动尝试下一个模型 → 再升级层级 |
+| **统一接口** | MIMO API (OpenAI 兼容) 调用，OpenCode 统一执行多模型 |
 | **代码执行** | OpenCode 原生执行，非简单文本生成 |
 | **成本控制** | 目标：80% cheap / 15% mid / 5% premium，实时统计追踪 |
-| **可观测性** | 完整调用链路记录、统计仪表盘、历史记录 |
+| **可观测性** | 完整调用链路记录、统计持久化 (stats/history 文件)、历史记录 |
 
 ---
 
@@ -28,7 +28,7 @@ ai-system/
 ├── router.py         # 任务分类路由器
 ├── policy.py         # 成本策略 & 升级判断
 ├── models.py         # 数据模型定义
-├── llm.py            # LiteLLM 统一封装
+├── llm.py            # MIMO API (OpenAI 兼容) 封装
 ├── executor.py       # OpenCode 执行层
 ├── config.py         # 模型池 & 配置参数
 ├── requirements.txt  # 依赖列表
@@ -53,18 +53,17 @@ cp .env.example .env
 # 编辑 .env 填入你的 API Key
 ```
 
-**至少需要一个可用的 API Key**：
-- `OPENAI_API_KEY` (推荐，支持 gpt-4o-mini/gpt-4o)
-- `ANTHROPIC_API_KEY` (支持 claude-sonnet)
-- `GOOGLE_API_KEY` (支持 gemini-flash)
-- `DEEPSEEK_API_KEY` (支持 deepseek-v3/deepseek-r1)
-- `QWEN_API_KEY` (支持 qwen3)
+**必需**：`MIMO_API_KEY`（用于 Router 分类，通过 `MIMO_BASE_URL` 指向 OpenAI 兼容端点）。
+
+`.env` 会在启动时通过 `python-dotenv` 自动加载，无需手动 `export`。
 
 ### 3. 安装 OpenCode
 
+Router 判断层直接走 MIMO API，执行层则调用 [OpenCode](https://opencode.ai/)：
+
 ```bash
-pip install opencode-ai
-# 或访问 https://opencode.ai 获取最新安装方式
+# 参考 https://opencode.ai 获取安装方式
+# 安装后确保 `opencode` 在 PATH 中（或用 OPENCODE_CMD 指定）
 ```
 
 ### 4. 运行系统
@@ -79,11 +78,11 @@ python main.py
 
 ```
 请输入任务: 帮我写一个 Python 登录系统，包含 JWT 认证
-路由决策: mid (置信度: 90%)
-理由: Router classified as: mid
+路由决策: mid (置信度: 85%)
+理由: Router: mid
 
-尝试模型: gpt-4o (第 1 次)
-✅ 成功! 使用模型: gpt-4o
+尝试模型: mimo/mimo-v2.5-pro
+✅ 成功: mimo/mimo-v2.5-pro
 
 📝 结果:
 [完整的登录系统代码...]
@@ -93,22 +92,22 @@ python main.py
 
 ```
 请输入任务: 翻译这段代码注释成中文
-路由决策: cheap (置信度: 90%)
-理由: Router classified as: cheap
+路由决策: cheap (置信度: 85%)
+理由: Router: cheap
 
-尝试模型: gpt-4o-mini (第 1 次)
-✅ 成功! 使用模型: gpt-4o-mini
+并发尝试: opencode/mimo-v2.5-free, opencode/deepseek-v4-flash-free
+✅ 最快响应: opencode/mimo-v2.5-free
 
 📊 统计: 总计=2 | cheap=1(50%) | mid=1(50%) | premium=0(0%)
 ```
 
 ```
 请输入任务: 设计一个支持百万并发的微服务架构，包含熔断、限流、链路追踪
-路由决策: premium (置信度: 90%)
-理由: Router classified as: premium
+路由决策: premium (置信度: 85%)
+理由: Router: premium
 
-尝试模型: claude-sonnet (第 1 次)
-✅ 成功! 使用模型: claude-sonnet
+尝试模型: deepseek/deepseek-reasoner
+✅ 成功: deepseek/deepseek-reasoner
 
 📊 统计: 总计=3 | cheap=1(33%) | mid=1(33%) | premium=1(33%)
 ```
@@ -132,22 +131,19 @@ python main.py
 ```python
 MODEL_POOL = {
     "cheap": [
-        "gpt-4o-mini",      # $0.15/1M input, $0.60/1M output
-        "qwen3",             # 阿里通义千问
-        "deepseek-v3"        # DeepSeek V3
+        "opencode/mimo-v2.5-free",
+        "opencode/deepseek-v4-flash-free",
     ],
     "mid": [
-        "gpt-4o",            # $2.50/1M input, $10.00/1M output
-        "deepseek-r1",       # 推理模型
-        "gemini-flash"       # Google Gemini Flash
+        "mimo/mimo-v2.5-pro",
     ],
     "premium": [
-        "claude-sonnet"      # $3.00/1M input, $15.00/1M output
-    ]
+        "deepseek/deepseek-reasoner",
+    ],
 }
 ```
 
-> **注意**：模型名称需与 LiteLLM 支持的格式一致。查看完整列表：`litellm model_list`
+> **注意**：模型名称需与 OpenCode 支持的格式一致。查看完整列表：`opencode models`
 
 ### 成本策略 (config.py)
 
@@ -156,7 +152,8 @@ COST_POLICY = {
     "max_retries_per_tier": 3,      # 每层最多重试次数
     "upgrade_on_error": True,        # 报错自动升级
     "upgrade_on_short_response": True, # 回复过短自动升级
-    "min_response_length": 20,       # 最小有效回复长度
+    "min_response_length": 30,       # 最小有效回复长度
+    "upgrade_on_keywords": [...],     # 命中风险关键词自动升级
     "cheap_ratio_target": 0.80,      # 目标 cheap 占比 80%
     "mid_ratio_target": 0.15,        # 目标 mid 占比 15%
     "premium_ratio_target": 0.05     # 目标 premium 占比 5%
@@ -170,15 +167,15 @@ COST_POLICY = {
 ```
 用户任务
     ↓
-Router (gpt-4o-mini 判断)
+Router (MIMO 模型判断)
     ↓
 ┌─────────┬─────────┬──────────┐
 │ cheap   │ mid     │ premium  │
-│ gpt-4o- │ gpt-4o  │ claude-  │
-│ mini    │ deepseek│ sonnet   │
-│ qwen3   │ -r1     │          │
-│ deepseek│ gemini  │          │
-│ -v3     │ -flash  │          │
+│ mimo-   │ mimo-   │ deepseek-│
+│ v2.5-   │ v2.5-   │ reasoner │
+│ free    │ pro     │          │
+│ deepseek│         │          │
+│ v4-flash│         │          │
 └────┬────┴────┬────┴────┬────┘
      │         │         │
      ↓ 失败/质量不达标 ↓
@@ -238,26 +235,20 @@ Router (gpt-4o-mini 判断)
 
 ### 持久化统计
 
-```python
-# 在 AISystem 中添加
-import sqlite3
-
-def _save_stats(self):
-    conn = sqlite3.connect("ai_system.db")
-    # 保存 stats 和 history
-```
+统计与历史已默认持久化到 `ai_system_stats.json` 与 `ai_system_history.jsonl`
+（见 `config.py` 的 `STATS_FILE` / `HISTORY_FILE`），重启后自动加载。
 
 ---
 
 ## 💰 成本估算 (参考)
 
-| 层级 | 模型 | 单价 (输入/输出) | 预估日均成本 (1000次) |
-|------|------|------------------|----------------------|
-| cheap | gpt-4o-mini | $0.15/$0.60 | ~$0.75 |
-| mid | gpt-4o | $2.50/$10.00 | ~$12.50 |
-| premium | claude-sonnet | $3.00/$15.00 | ~$18.00 |
+| 层级 | 模型 | 说明 |
+|------|------|------|
+| cheap | mimo-v2.5-free / deepseek-v4-flash-free | 免费额度，简单任务并发跑 |
+| mid | mimo-v2.5-pro | 付费，开发任务 |
+| premium | deepseek-reasoner | 复杂推理 |
 
-**按 80/15/5 分配，1000次调用约 $3.50** (vs 全用 GPT-4o 约 $12.50，**节省 72%**)
+**按 80/15/5 分配**，绝大多数请求落在免费的 cheap 层，仅少量复杂任务消耗付费额度。
 
 ---
 
