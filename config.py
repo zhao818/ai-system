@@ -12,10 +12,9 @@ MODEL_POOL = {
         "opencode/deepseek-v4-flash-free",
     ],
     "mid": [
-        "deepseek/deepseek-reasoner",
+        "mimo/mimo-v2.5-pro",
     ],
     "premium": [
-        "mimo/mimo-v2.5-pro",
         "deepseek/deepseek-reasoner",
     ]
 }
