@@ -13,11 +13,10 @@ MODEL_POOL = {
     ],
     "mid": [
         "deepseek/deepseek-reasoner",
-        "mimo/mimo-v2.5-pro",
     ],
     "premium": [
-        "deepseek/deepseek-reasoner",
         "mimo/mimo-v2.5-pro",
+        "deepseek/deepseek-reasoner",
     ]
 }
 
