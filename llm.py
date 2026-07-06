@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MIMO_API_BASE = os.environ.get("MIMO_BASE_URL", "https://api.xiaomimimo.com/v1")
+MIMO_API_BASE = os.environ.get("MIMO_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
 MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "")
 
 
