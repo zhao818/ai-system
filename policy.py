@@ -9,10 +9,19 @@ def should_upgrade(response: TaskResponse) -> bool:
     if response.error and "error" in response.error.lower():
         return COST_POLICY["upgrade_on_error"]
 
-    if len(response.result.strip()) < COST_POLICY["min_response_length"]:
+    result = response.result.strip()
+    # 只对空结果或明显报错做升级，简短结果不升级
+    if not result:
+        return True
+
+    if len(result) < COST_POLICY["min_response_length"] and not _contains_chinese(result):
         return COST_POLICY["upgrade_on_short_response"]
 
     return False
+
+
+def _contains_chinese(text: str) -> bool:
+    return any('\u4e00' <= c <= '\u9fff' for c in text)
 
 
 def calculate_cost_ratio(stats: dict) -> dict:

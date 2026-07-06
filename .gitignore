@@ -9,3 +9,4 @@ build/
 ai_system_stats.json
 venv/
 .venv/
+ai_system_pids.json

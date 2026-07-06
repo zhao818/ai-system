@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ROUTER_SVC_URL=http://router:8001
+      - EXECUTOR_SVC_URL=http://executor:8002
+      - POLICY_SVC_URL=http://policy:8003
+      - MODEL_PROXY_SVC_URL=http://model_proxy:8004
+      - STATS_SVC_URL=http://stats:8005
+    depends_on:
+      - router
+      - executor
+      - policy
+      - model_proxy
+      - stats
+
+  router:
+    build:
+      context: .
+      dockerfile: services/router_service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - MIMO_API_KEY=${MIMO_API_KEY}
+      - MIMO_API_BASE=${MIMO_API_BASE:-https://token-plan-cn.xiaomimimo.com/v1}
+
+  executor:
+    build:
+      context: .
+      dockerfile: services/executor/Dockerfile
+    ports:
+      - "8002:8002"
+
+  policy:
+    build:
+      context: .
+      dockerfile: services/policy/Dockerfile
+    ports:
+      - "8003:8003"
+
+  model_proxy:
+    build:
+      context: .
+      dockerfile: services/model_proxy/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - MIMO_API_KEY=${MIMO_API_KEY}
+      - MIMO_API_BASE=${MIMO_API_BASE:-https://token-plan-cn.xiaomimimo.com/v1}
+
+  stats:
+    build:
+      context: .
+      dockerfile: services/stats/Dockerfile
+    ports:
+      - "8005:8005"
+
+networks:
+  default:
+    name: ai-system-network

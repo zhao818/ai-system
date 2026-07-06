@@ -1,72 +1,34 @@
-import os
-import litellm
+import os, requests
 
-# MIMO 自定义 API
-MIMO_API_BASE = "https://api.xiaomimimo.com/v1"
-MIMO_API_KEY = os.getenv("MIMO_API_KEY", "")
+MIMO_API_BASE = "https://token-plan-cn.xiaomimimo.com/v1"
+MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "")
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+HEADERS = {
+    "Authorization": f"Bearer {MIMO_API_KEY}",
+    "Content-Type": "application/json"
+}
 
 
-def get_api_params(model: str) -> dict:
-    """根据模型名返回对应的 api_base 和 api_key"""
-    if model.startswith("mimo/"):
-        return {
-            "api_base": MIMO_API_BASE,
-            "api_key": MIMO_API_KEY,
-            "model": model.replace("mimo/", "openai/"),
-        }
-    if model.startswith("deepseek/"):
-        return {
-            "api_key": DEEPSEEK_API_KEY or MIMO_API_KEY,
-            "model": model,
-        }
-    if model.startswith("qwen/"):
-        return {
-            "api_key": QWEN_API_KEY or MIMO_API_KEY,
-            "model": model,
-        }
-    # 默认走 MIMO
-    return {
-        "api_base": MIMO_API_BASE,
-        "api_key": MIMO_API_KEY,
-        "model": f"openai/{model}",
+def call_llm(model: str, prompt: str, max_tokens: int = 200, timeout: int = 30) -> str:
+    """直接调 MIMO API (OpenAI 兼容)，支持 reasoning_content"""
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0,
     }
 
-
-def call_llm(model: str, prompt: str, **kwargs) -> str:
-    params = get_api_params(model)
-
     try:
-        res = litellm.completion(
-            **params,
-            messages=[{"role": "user", "content": prompt}],
-            timeout=60,
-            max_retries=2,
-            drop_params=True,
-            **kwargs
+        resp = requests.post(
+            f"{MIMO_API_BASE}/chat/completions",
+            headers=HEADERS,
+            json=payload,
+            timeout=timeout
         )
-        return res["choices"][0]["message"]["content"]
-    except Exception as e:
-        raise RuntimeError(f"LLM call failed for {model}: {e}")
-
-
-def call_llm_with_system(model: str, system_prompt: str, user_prompt: str, **kwargs) -> str:
-    params = get_api_params(model)
-
-    try:
-        res = litellm.completion(
-            **params,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            timeout=60,
-            max_retries=2,
-            drop_params=True,
-            **kwargs
-        )
-        return res["choices"][0]["message"]["content"]
+        resp.raise_for_status()
+        data = resp.json()
+        msg = data["choices"][0]["message"]
+        # MIMO 是推理模型，最终答案可能在 content 或 reasoning_content
+        return msg.get("content", "").strip() or msg.get("reasoning_content", "").strip()
     except Exception as e:
         raise RuntimeError(f"LLM call failed for {model}: {e}")
